@@ -1,7 +1,7 @@
 '''
 Created on Jan 26, 2017
 
-@author: Prutkis
+@author: tommi
 '''
 from enum import Enum
 from random import SystemRandom
@@ -20,7 +20,7 @@ class Street(Enum):
 
 class PlayerState:
     STACK_SIZE = 10000
-    MONEY_BEHIND = 900000000   
+    MONEY_BEHIND = 90000  
     
     def __init__(self):
         self.stack = self.STACK_SIZE

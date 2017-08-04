@@ -19,7 +19,7 @@ AGENT2 = Agent()
 class HUGame():
     SMALL_BLIND = 50
     BIG_BLIND = 100
-    HANDS_PER_ROUND = 100
+    HANDS_PER_ROUND = 200
     _rng = random
     
     def __init__(self, agent1, agent2, fullSpeed = False):
@@ -76,7 +76,7 @@ class HUGame():
                     action, betsize = pAgent.get_action()
                     
                     if not self.fullSpeed:
-                        sleep(2)
+                        sleep(0.5)
                     
                     if action == Action.CHECKFOLD:
                         if pEnemy.betSize <= pState.betSize:
@@ -119,7 +119,7 @@ class HUGame():
                     observer.update_state(self.player1[0], self.player2[0], boardCards[:street.value],
                                           pot, self.p1HasButton, True)               
                 if not self.fullSpeed:
-                    sleep(8)                    
+                    sleep(9)                    
         
 if __name__ == "__main__":
     game = HUGame(AGENT1, AGENT2)
