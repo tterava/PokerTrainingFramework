@@ -1,6 +1,6 @@
 import pygame, sys, os
-from player import Agent, Action
-from handeval import fast_eval
+from player import Agent, Action, Street
+from handeval import fasteval, gethand
 from threading import Thread
 from hugame import HUGame
 from time import sleep
@@ -9,14 +9,14 @@ PLAYER1 = Agent()
 PLAYER2 = Agent()
 
 class GameThread(Thread):
-    def __init__(self, observer, observeOnly):
-        self.observer = observer
-        p1 = PLAYER1 if observeOnly else observer
-        self.game = HUGame(p1, PLAYER2, fullSpeed = False)
+    def __init__(self, GUI, observeOnly):
         super().__init__(daemon = True)
+        self.GUI = GUI
+        p1 = PLAYER1 if observeOnly else GUI
+        self.game = HUGame(p1, PLAYER2, fullSpeed = False)    
 
     def run(self):
-        self.game.start(observer = self.observer)
+        self.game.start(observer = self.GUI)
 
 class GUI(Agent):
     black = 30, 30, 30
@@ -40,6 +40,11 @@ class GUI(Agent):
              4: "Straight", 5: "Flush", 6: "Full House", 7: "Four of a kind",
              8: "Straight Flush"}
     
+    def __init__(self, observeOnly = False):
+        super().__init__()
+        self.observeOnly = observeOnly
+        self.gameThread = GameThread(self, observeOnly)
+    
     def get_file_name(self, card):
         r = self.ranks[card[0]] if card[0] >= 9 else card[0] + 2
         return str.lower(str(r)) + "_of_" + self.suits[card[1]] + ".png"
@@ -47,50 +52,42 @@ class GUI(Agent):
     def get_eval_string(self, evl):
         category = evl[0]
         name1 = self.evals[evl[0]]
-        if category == 0:
-            name2 = "-".join((self.shortRanks[x] for x in evl[1:])) + " high"
-        elif category == 1:
+        if category == 0 or category == 5:
+            name2 = "-".join((self.shortRanks[x] for x in evl[1:]))
+        elif category == 1 or category == 3:
             name2 = self.ranks[evl[1]] + "s + " + "-".join(self.shortRanks[x] for x in evl[2:])
         elif category == 2:
             name2 = self.ranks[evl[1]] + "s and " + self.ranks[evl[2]] + "s + " + self.shortRanks[evl[3]]
-        elif category == 3:
-            name2 = self.ranks[evl[1]] + "s + " + "-".join(self.shortRanks[x] for x in evl[2:])
-        elif category == 4:
-            name2 = self.ranks[evl[1]] + " high"
-        elif category == 5:
-            name2 = "-".join((self.shortRanks[x] for x in evl[1:])) + " high"
         elif category == 6:
-            name2 = self.ranks[evl[1]] + "s full of " + self.ranks[evl[2]]
+            name2 = self.ranks[evl[1]] + "s full of " + self.ranks[evl[2]] + "s"
         elif category == 7:
             name2 = self.ranks[evl[1]] + "s + " + self.shortRanks[evl[2]]
         else:
             name2 = self.ranks[evl[1]] + " high"
-            
-        name2 = name2.replace("Sixs", "Sixes")
         
-        return name1, name2
+        return name1, name2.replace("Sixs", "Sixes")
         
     
-    def update_cards(self, board, hand, enemy, showdown):
+    def update_cards(self, street):
         self.pocketImages = []
         self.boardImages = []
         self.enemyImages = []     
          
-        for card, rect in zip(hand, self.pocketRects):
+        for card, rect in zip(self.state.hand, self.pocketRects):
             self.pocketImages.append(self.get_scaled_image(self.get_file_name(card), rect))
     
-        for card, rect in zip(board, self.boardRects):    
+        for card, rect in zip(self.state.boardCards[:min(street.value, 5)], self.boardRects):    
             self.boardImages.append(self.get_scaled_image(self.get_file_name(card), rect))
             
-        for card, rect in zip(enemy, self.enemyRects):
-            img = self.get_file_name(card) if showdown or self.observeOnly else "back.png"
+        for card, rect in zip(self.enemyState.hand, self.enemyRects):
+            img = self.get_file_name(card) if street == Street.SHOWDOWN or self.observeOnly else "back.png"
             self.enemyImages.append(self.get_scaled_image(img, rect))
             
-        if len(board) >= 3:
-            evl = fast_eval(hand + board)
+        if street.value >= 3:
+            evl = fasteval(self.state.hand + self.state.boardCards[:min(street.value, 5)], min(street.value + 2, 7))
             n1, n2 = self.get_eval_string(evl)
-            if showdown or self.observeOnly:
-                evl = fast_eval(enemy + board)
+            if street == Street.SHOWDOWN or self.observeOnly:
+                evl = fasteval(self.enemyState.hand + self.state.boardCards, 7)
                 n3, n4 = self.get_eval_string(evl)
             else:
                 n3 = n4 = ""
@@ -106,19 +103,13 @@ class GUI(Agent):
         img = pygame.image.load(os.path.join('png', image))
         return pygame.transform.scale(img, (destination.width, destination.height))
     
-    def update_state(self, myState, eState, boardCards, pot, gotButton, showdown = False):       
-        self.update_cards(boardCards, myState.hand, eState.hand, showdown)
+    def update(self, street, pot):       
+        self.update_cards(street)
         self.texts["pot"][0] = self.myfont.render('{0:.2f}'.format(pot / 100), True, (0, 0, 0))
-        self.texts["bet"][0] = self.myfont.render('{0:.2f}'.format(myState.betSize / 100), True, (0, 0, 0))
-        self.texts["enemyBet"][0] = self.myfont.render('{0:.2f}'.format(eState.betSize / 100), True, (0, 0, 0))
-        self.texts["stack"][0] = self.myfont.render('{0:.2f}'.format(myState.stack / 100), True, (0, 0, 0))
-        self.texts["enemyStack"][0] = self.myfont.render('{0:.2f}'.format(eState.stack / 100), True, (0, 0, 0))
-        self.gotButton = gotButton            
-        
-    def __init__(self, observeOnly = False):
-        super().__init__()
-        self.observeOnly = observeOnly
-        self.gameThread = GameThread(self, observeOnly)
+        self.texts["bet"][0] = self.myfont.render('{0:.2f}'.format(self.state.betSize / 100), True, (0, 0, 0))
+        self.texts["enemyBet"][0] = self.myfont.render('{0:.2f}'.format(self.enemyState.betSize / 100), True, (0, 0, 0))
+        self.texts["stack"][0] = self.myfont.render('{0:.2f}'.format(self.state.stack / 100), True, (0, 0, 0))
+        self.texts["enemyStack"][0] = self.myfont.render('{0:.2f}'.format(self.enemyState.stack / 100), True, (0, 0, 0))
         
     def resolve_key_press(self, key_string):
         stripped = key_string.replace("[", "").replace("]", "")
@@ -216,7 +207,6 @@ class GUI(Agent):
         self.boardImages = []
         self.enemyImages = []
         
-        self.gotButton = False
         self.awaitingAction = False 
         self.gameThread.start()
         
@@ -258,7 +248,7 @@ class GUI(Agent):
                 parent = self.rects[k][0]
                 self.screen.blit(text, (parent.left + offSet[0], parent.top + offSet[1]))
             
-            if self.gotButton:
+            if self.state.hasButton:
                 self.screen.blit(self.get_scaled_image("dealer.png", self.rects["dealer"][0]), self.rects["dealer"][0])
             else:
                 self.screen.blit(self.get_scaled_image("dealer.png", self.rects["enemyDealer"][0]), self.rects["enemyDealer"][0])   
@@ -274,6 +264,6 @@ class GUI(Agent):
             sleep(0.01)
             
 if __name__ == "__main__":
-    gui = GUI(observeOnly = False)
+    gui = GUI(observeOnly = True)
     gui.start_gui()
             

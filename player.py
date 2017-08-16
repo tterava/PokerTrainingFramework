@@ -4,8 +4,7 @@ Created on Jan 26, 2017
 @author: tommi
 '''
 from enum import Enum
-from random import SystemRandom
-import random
+from handeval import pcg_brand
 
 class Action(Enum):
     CHECKFOLD = 1
@@ -17,6 +16,7 @@ class Street(Enum):
     FLOP = 3
     TURN = 4
     RIVER = 5
+    SHOWDOWN = 6
 
 class PlayerState:
     STACK_SIZE = 10000
@@ -47,6 +47,7 @@ class PlayerState:
         self.hasActed = False
         self.hasFolded = False
         self.cards = []
+        self.boardCards = []
         return self.reload_stack()
         
     def reload_stack(self):
@@ -59,13 +60,17 @@ class PlayerState:
                 return True
         return True        
         
-class Agent: # Base class for all AI and human players. Plays random moves
-    _rng = random
-    
+class Agent: # Base class for all AI and human players. Plays random moves. Agent never modifies PlayerStates.
+    def __init__(self):
+        self.state = PlayerState()
+        
+    def set_enemy_state(self, state):
+        self.enemyState = state
+      
     def get_action(self): # AI implementation
-        return Action(self._rng.randint(1, 3)), self._rng.randint(1, 10000)
+        return Action(pcg_brand(3) + 1), pcg_brand(10000)
     
-    def update_state(self, myState, eState, boardCards, pot, gotButton, showdown = False):
+    def update(self, street, pot):
         pass
     
         

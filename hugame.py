@@ -4,11 +4,9 @@ Created on Jul 25, 2017
 @author: tommi
 '''
 
-import random
-from random import SystemRandom
-from handeval import fast_eval
+from handeval import fasteval, gethand, pcg_brand
 
-from player import PlayerState, Action, Street, Agent
+from player import Action, Street, Agent
 
 from time import sleep
 
@@ -20,109 +18,112 @@ class HUGame():
     SMALL_BLIND = 50
     BIG_BLIND = 100
     HANDS_PER_ROUND = 200
-    _rng = random
     
     def __init__(self, agent1, agent2, fullSpeed = False):
-        self.player1 = (PlayerState(), agent1)
-        self.player2 = (PlayerState(), agent2)
+        self.player1 = agent1
+        self.player2 = agent2
+        
+        self.player1.set_enemy_state(self.player2.state)
+        self.player2.set_enemy_state(self.player1.state)
+        
         self.fullSpeed = fullSpeed
     
-        self.p1HasButton = self._rng.choice([True, False])
+        self.player1.state.hasButton = bool(pcg_brand(2))
+        self.player2.state.hasButton = not self.player1.state.hasButton
         
     def start(self, observer = None):
+        if observer:
+            observer.state = self.player1.state
+            observer.set_enemy_state(self.player2.state)
         for _ in range(self.HANDS_PER_ROUND):
-            self.p1HasButton = not self.p1HasButton
+            self.player1.state.hasButton = not self.player1.state.hasButton
+            self.player2.state.hasButton = not self.player2.state.hasButton
         
-            (pState, pAgent), (pEnemy, pEnemyAgent) = (self.player1, self.player2) if self.p1HasButton \
-                                                      else (self.player2, self.player1)
+            pCurrent, pEnemy = (self.player1, self.player2) if self.player1.state.hasButton else \
+                               (self.player2, self.player1)
             
-            hasMoney = pState.reset()
-            hasMoney = hasMoney and pEnemy.reset()
+            hasMoney = pCurrent.state.reset() and pEnemy.state.reset()
             if not hasMoney:
                 break          
             
-            allCards = [(x % 13, int(x / 13)) for x in self._rng.sample(range(52), 9)] # Creates cards in format (Rank, Suit)        
-            pState.hand = allCards[:2]
-            pEnemy.hand = allCards[2:4]
-            boardCards = allCards[4:]
+            pCurrent.state.hand, pEnemy.state.hand, boardCards = gethand()
             
-            pState.bet(self.SMALL_BLIND)
-            pEnemy.bet(self.BIG_BLIND)
+            pCurrent.state.boardCards = pEnemy.state.boardCards = boardCards
+            
+            pCurrent.state.bet(self.SMALL_BLIND)
+            pEnemy.state.bet(self.BIG_BLIND)
             pot = 0
             
             for street in Street:
+                if street == Street.SHOWDOWN:
+                    stateS = fasteval(pCurrent.state.hand + boardCards, 7)
+                    enemyS = fasteval(pEnemy.state.hand + boardCards, 7)
+                    
+                    if stateS != enemyS:
+                        winner = pCurrent.state if stateS > enemyS else pEnemy.state
+                        winner.add_money(pot)
+                    else:
+                        pCurrent.state.add_money(int(pot/2))
+                        pEnemy.state.add_money(int(pot/2))
+                        
+                    self.player1.update(street, pot)
+                    self.player2.update(street, pot)
+                    
+                    if observer:
+                        observer.update(street, pot)               
+                    if not self.fullSpeed:
+                        sleep(9)
+                    break
+                                    
                 if observer:
-                    observer.update_state(self.player1[0], self.player2[0], boardCards[:street.value],
-                                          pot, self.p1HasButton)
+                    observer.update(street, pot)
                 if not self.fullSpeed:
                     sleep(1)
                     
                 minRaise = self.SMALL_BLIND
                 
                 if street != Street.PREFLOP:
-                    (pState, pAgent), (pEnemy, pEnemyAgent) = (self.player2, self.player1) if self.p1HasButton \
-                                                              else (self.player1, self.player2)
+                    pCurrent, pEnemy = (self.player2, self.player1) if self.player1.state.hasButton else \
+                                       (self.player1, self.player2)
                     
-                while (not pState.isAllIn) and not (pEnemy.isAllIn and pEnemy.betSize <= pState.betSize) \
-                        and (pEnemy.betSize > pState.betSize or not pState.hasActed):
+                while (not pCurrent.state.isAllIn) and not (pEnemy.state.isAllIn and pEnemy.state.betSize <= pCurrent.state.betSize) \
+                        and (pEnemy.state.betSize > pCurrent.state.betSize or not pCurrent.state.hasActed):
                     if observer:
-                        observer.update_state(self.player1[0], self.player2[0], boardCards[:street.value],
-                                              pot, self.p1HasButton)      
+                        observer.update(street, pot)      
                     
-                    pAgent.update_state(pState, pEnemy, boardCards[:street.value], pot,
-                                        (self.p1HasButton and pState == self.player1[0]) or
-                                        (not self.p1HasButton and pState == self.player2[0]))
-                    
-                    action, betsize = pAgent.get_action()
+                    pCurrent.update(street, pot)                 
+                    action, betsize = pCurrent.get_action()
                     
                     if not self.fullSpeed:
                         sleep(0.5)
                     
                     if action == Action.CHECKFOLD:
-                        if pEnemy.betSize <= pState.betSize:
+                        if pEnemy.state.betSize <= pCurrent.state.betSize:
                             action = Action.CHECKCALL
                         else:
-                            pEnemy.add_money(pEnemy.betSize + pState.betSize + pot)
-                            pState.hasFolded = True
+                            pEnemy.state.add_money(pEnemy.state.betSize + pCurrent.state.betSize + pot)
+                            pCurrent.state.hasFolded = True
                             break
                     if action == Action.CHECKCALL:
-                        pState.bet(pEnemy.betSize)        
+                        pCurrent.state.bet(pEnemy.state.betSize)        
                     elif action == Action.BETRAISE:
-                        betAttempt = min(max(pEnemy.betSize + minRaise, betsize), pEnemy.betSize + pEnemy.stack)
-                        minRaise = max(betAttempt - pEnemy.betSize, self.SMALL_BLIND)
-                        pState.bet(betAttempt)
+                        betAttempt = min(max(pEnemy.state.betSize + minRaise, betsize), pEnemy.state.betSize + pEnemy.state.stack)
+                        minRaise = max(betAttempt - pEnemy.state.betSize, self.SMALL_BLIND)
+                        pCurrent.state.bet(betAttempt)
                     
-                    pState.hasActed = True
-                    pState, pAgent, pEnemy, pEnemyAgent = pEnemy, pEnemyAgent, pState, pAgent
+                    pCurrent.state.hasActed = True
+                    pCurrent, pEnemy = pEnemy, pCurrent
                     
-                if pState.hasFolded or pEnemy.hasFolded:
+                if pCurrent.state.hasFolded or pEnemy.state.hasFolded:
                     break
                 else: # Round over
-                    pot += pState.betSize + pEnemy.betSize
-                    pState.betSize = pEnemy.betSize = 0
-                    pState.hasActed = pEnemy.hasActed = False
-                                      
-            else: # Showdown was reached
-                p1Strenght = fast_eval(pState.hand + boardCards)
-                p2Strength = fast_eval(pEnemy.hand + boardCards)
-                for s1, s2 in zip(p1Strenght, p2Strength):
-                    if s1 != s2:
-                        winner = pState if s1 > s2 else pEnemy
-                        winner.add_money(pot)
-                        break
-                else:
-                    pState.add_money(int(pot/2))
-                    pEnemy.add_money(int(pot/2))
-                self.player1[1].update_state(self.player1[0], self.player2[0], boardCards, pot, self.p1HasButton, True)
-                self.player2[1].update_state(self.player2[0], self.player1[0], boardCards, pot, not self.p1HasButton, True)
-                if observer:
-                    observer.update_state(self.player1[0], self.player2[0], boardCards[:street.value],
-                                          pot, self.p1HasButton, True)               
-                if not self.fullSpeed:
-                    sleep(9)                    
+                    pot += pCurrent.state.betSize + pEnemy.state.betSize
+                    pCurrent.state.betSize = pEnemy.state.betSize = 0
+                    pCurrent.state.hasActed = pEnemy.state.hasActed = False
+                
         
 if __name__ == "__main__":
-    game = HUGame(AGENT1, AGENT2)
+    game = HUGame(AGENT1, AGENT2, fullSpeed=True)
     game.start()
                 
         

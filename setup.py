@@ -3,10 +3,8 @@ Created on Jul 31, 2017
 
 @author: tommi
 '''
-from distutils.core import setup
-from Cython.Build import cythonize
+from distutils.core import setup, Extension
 
 setup(
-    name = 'Hand evaluator',
-    ext_modules = cythonize("handeval.pyx")
+    ext_modules=[Extension("handeval", ["handeval.c", "pcg/pcg_basic.c"])],
 )
