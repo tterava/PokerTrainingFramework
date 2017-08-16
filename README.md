@@ -6,5 +6,5 @@ The framework is light weight and includes a C-based hand evaluator that is extr
 
 A GUI is included to play against an AI or observe two AI's battling it out.
 
-Usage:
+# Usage:
 Build C-extension with by running command "python3 setup.py build_ext --inplace".
