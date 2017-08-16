@@ -7,4 +7,6 @@ The framework is light weight and includes a C-based hand evaluator that is extr
 A GUI is included to play against an AI or observe two AI's battling it out.
 
 # Usage:
-Build C-extension with by running command "python3 setup.py build_ext --inplace".
+Build C-extension by running command "python3 setup.py build_ext --inplace".
+You can run GUI.py if you want to play against a bot yourself or to spectate match between two bots.
+Running HUGame.py allows for maximum speed without a GUI.
