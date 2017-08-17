@@ -20,7 +20,7 @@ class Street(Enum):
 
 class PlayerState:
     STACK_SIZE = 10000
-    MONEY_BEHIND = 90000  
+    MONEY_BEHIND = 990000  
     
     def __init__(self):
         self.stack = self.STACK_SIZE

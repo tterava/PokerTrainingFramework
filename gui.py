@@ -87,7 +87,7 @@ class GUI(Agent):
             evl = fasteval(self.state.hand + self.state.boardCards[:min(street.value, 5)], min(street.value + 2, 7))
             n1, n2 = self.get_eval_string(evl)
             if street == Street.SHOWDOWN or self.observeOnly:
-                evl = fasteval(self.enemyState.hand + self.state.boardCards, 7)
+                evl = fasteval(self.enemyState.hand + self.state.boardCards[:min(street.value, 5)], min(street.value + 2, 7))
                 n3, n4 = self.get_eval_string(evl)
             else:
                 n3 = n4 = ""
